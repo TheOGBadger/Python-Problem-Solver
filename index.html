@@ -267,7 +267,7 @@
       <span id="btn-text">Run Solver</span>
     </button>
 
-    <button class="step-btn-full" id="step-btn" onclick="downloadStepByStep()" disabled>
+    <button class="step-btn-full" id="step-btn" onclick="downloadStepByStep()">
       📄 Download Step-by-Step Guide (.md)
     </button>
 
@@ -551,7 +551,6 @@ function clearOutput() {
   document.getElementById('output-content').innerHTML = `<div class="placeholder-msg"><div class="big-icon">🐍</div><p>Describe a Python problem on the left and hit <strong>Run Solver</strong> to get started.</p></div>`;
   document.getElementById('status-dot').className = 'status-indicator';
   document.getElementById('status-text').textContent = 'ready';
-  const sb3 = document.getElementById('step-btn'); if(sb3) sb3.disabled = true;
   try { sessionStorage.removeItem('pysolve_last_output'); } catch(e) {}
 }
 
@@ -630,7 +629,6 @@ async function runSolver() {
     applyHighlighting();
     statusDot.className = 'status-indicator done';
     statusText.textContent = 'done';
-    const sb = document.getElementById('step-btn'); if(sb) sb.disabled = false;
     try { sessionStorage.setItem('pysolve_last_output', rawOutput); } catch(e) {}
 
   } catch(err) {
@@ -649,7 +647,8 @@ async function runSolver() {
 // ── Step-by-step Guide Download ────────────────────────────────────────────
 async function downloadStepByStep() {
   const apiKey = getApiKey();
-  if (!apiKey || !rawOutput) return;
+  if (!apiKey) { openModal(); return; }
+  if (!rawOutput) { alert('Run a problem first to generate a guide!'); return; }
 
   const btn = document.getElementById('step-btn');
   btn.disabled = true;
@@ -737,7 +736,7 @@ document.addEventListener('DOMContentLoaded', function() {
       applyHighlighting();
       document.getElementById('status-dot').className = 'status-indicator done';
       document.getElementById('status-text').textContent = 'restored';
-      const sb2 = document.getElementById('step-btn'); if(sb2) sb2.disabled = false;
+
     }
   } catch(e) {}
 
@@ -776,6 +775,95 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('modal').classList.add('hidden');
   }
 });
+
+// ── Step-by-step Guide Download ────────────────────────────────────────────
+async function downloadStepByStep() {
+  const apiKey = getApiKey();
+  if (!apiKey) { openModal(); return; }
+  if (!rawOutput) { alert('Run a problem first to generate a guide!'); return; }
+
+  const btn = document.getElementById('step-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating guide...';
+
+  const problem = document.getElementById('problem-input').value.trim() || 'the attached image problem';
+
+  const prompt = `You are an expert Python tutor writing a detailed study guide in Markdown.
+
+The student asked: ${problem}
+
+The solution was:
+${rawOutput}
+
+Write a comprehensive step-by-step study guide teaching the student HOW to arrive at this solution themselves. Use this exact structure:
+
+# Step-by-Step Guide: ${problem.slice(0,60)}
+
+## What This Problem Is Asking
+Plain English explanation of what needs to be solved.
+
+## Key Concepts You Need to Know
+List and explain every concept required.
+
+## Step-by-Step Thought Process
+Numbered steps showing how to think through this from scratch.
+
+## The Solution Explained Line by Line
+Every line of code explained — what it does and why.
+
+## How to Test Your Solution
+Example inputs and expected outputs to verify it works.
+
+## Common Mistakes to Avoid
+Typical errors students make on this type of problem.
+
+## Practice Problems
+2-3 similar problems to try yourself.
+
+Write clearly for a beginner. Use proper Markdown formatting.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.3
+      })
+    });
+
+    if (!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      throw new Error(e.error?.message || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const md = data?.choices?.[0]?.message?.content || '';
+    if (!md) throw new Error('Empty response');
+
+    const filename = problem.slice(0,40).replace(/[^a-z0-9]/gi,'_').toLowerCase() || 'python_guide';
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename + '_guide.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    btn.textContent = '✓ Downloaded!';
+    setTimeout(() => {
+      btn.textContent = '📄 Download Step-by-Step Guide (.md)';
+      btn.disabled = false;
+    }, 2000);
+
+  } catch(err) {
+    alert('Error: ' + err.message);
+    btn.textContent = '📄 Download Step-by-Step Guide (.md)';
+    btn.disabled = false;
+  }
+}
+
 </script>
 </body>
 </html>
